@@ -3,17 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { createJournalEntry, searchAccounts } from "../api.js";
 
 /**
- * Form for creating a new journal entry. This component provides
- * search‑as‑you‑type account selection with suggestions, enforces that each
- * line contains either a debit or credit (but not both), and ensures
- * the overall entry balances before it can be saved.
+ * Form for creating a new journal entry. Provides a polished UI with
+ * typeahead account search and improved table styling. Each line allows
+ * selecting an account via a search input that shows suggestions in a
+ * dropdown. Only one of debit or credit can be entered per line and the
+ * totals must balance before saving.
  */
 export default function JournalEntryForm() {
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
-  // Default date to today (YYYY-MM-DD)
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
-  // Each line stores its own local state for account search and amounts
   const [lines, setLines] = useState([
     {
       id: Date.now(),
@@ -31,7 +30,31 @@ export default function JournalEntryForm() {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Debounce account search for each line to avoid spamming the server
+  // Styling definitions for table and inputs
+  const tableStyle = {
+    width: "100%",
+    borderCollapse: "separate",
+    borderSpacing: "0 6px",
+  };
+  const headerCellStyle = {
+    background: "#f1f5f9",
+    fontWeight: "bold",
+    fontSize: "13px",
+  };
+  const cellStyle = {
+    background: "#fff",
+    padding: "10px",
+    borderBottom: "1px solid #e2e8f0",
+  };
+  const numberInputStyle = {
+    width: "100%",
+    padding: "8px",
+    borderRadius: "6px",
+    border: "1px solid #e2e8f0",
+    textAlign: "right",
+  };
+
+  // Debounce account search queries
   useEffect(() => {
     const timers = [];
     lines.forEach((line, idx) => {
@@ -54,11 +77,11 @@ export default function JournalEntryForm() {
     return () => timers.forEach((t) => clearTimeout(t));
   }, [lines]);
 
-  // Calculate totals for debit and credit
+  // Calculate totals
   const totalDebit = lines.reduce((sum, line) => sum + parseFloat(line.debit || 0), 0);
   const totalCredit = lines.reduce((sum, line) => sum + parseFloat(line.credit || 0), 0);
 
-  // Update a line's field; also enforce that only one of debit/credit is set
+  // Update line values and enforce single debit/credit
   const handleLineChange = (index, field, value) => {
     setLines((prev) => {
       const copy = [...prev];
@@ -77,7 +100,7 @@ export default function JournalEntryForm() {
     });
   };
 
-  // Add a new empty line
+  // Add and remove lines
   const addLine = () => {
     setLines((prev) => [
       ...prev,
@@ -95,8 +118,6 @@ export default function JournalEntryForm() {
       },
     ]);
   };
-
-  // Remove a line by index
   const removeLine = (index) => {
     setLines((prev) => prev.filter((_, idx) => idx !== index));
   };
@@ -106,18 +127,18 @@ export default function JournalEntryForm() {
     setLines((prev) => {
       const copy = [...prev];
       copy[index].accountId = account.id;
-      copy[index].accountQuery = `${account.code} - ${account.name}`;
-      copy[index].accountDisplay = `${account.code} - ${account.name}`;
+      copy[index].accountQuery = `${account.code} - ${account.name_ar || account.name} - ${account.name}`;
+      copy[index].accountDisplay = `${account.code} - ${account.name_ar || account.name} - ${account.name}`;
       copy[index].suggestions = [];
       return copy;
     });
   };
 
-  // Submit the entry to the backend
+  // Submit handler with validations
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    // Validate each line: account selected and either debit or credit provided
+    // Validate each line
     for (const line of lines) {
       if (!line.accountId) {
         setError("Please select an account for all lines");
@@ -169,7 +190,7 @@ export default function JournalEntryForm() {
     }
   };
 
-  // Determine if any line lacks an account selection
+  // Determine if any line lacks an account
   const hasEmptyAccount = lines.some((line) => !line.accountId);
 
   return (
@@ -195,35 +216,31 @@ export default function JournalEntryForm() {
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              style={{ width: "100%" }}
+              style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}
             />
           </label>
         </div>
-        <table
-          border="1"
-          cellPadding="6"
-          cellSpacing="0"
-          style={{ width: "100%", marginBottom: "10px" }}
-        >
+        <table border={0} cellPadding="0" cellSpacing="0" style={{ ...tableStyle, marginBottom: "10px" }}>
           <thead>
             <tr>
-              <th>Account</th>
-              <th>Description</th>
-              <th>Debit</th>
-              <th>Credit</th>
-              <th></th>
+              <th style={headerCellStyle}>Account</th>
+              <th style={headerCellStyle}>Description</th>
+              <th style={headerCellStyle}>Debit</th>
+              <th style={headerCellStyle}>Credit</th>
+              <th style={headerCellStyle}></th>
             </tr>
           </thead>
           <tbody>
             {lines.map((line, index) => (
               <tr key={line.id}>
-                <td style={{ position: "relative" }}>
+                <td style={{ ...cellStyle, position: "relative" }}>
                   <input
                     type="text"
                     value={line.accountDisplay || line.accountQuery}
                     onChange={(e) => handleLineChange(index, "accountQuery", e.target.value)}
-                    placeholder="Search account"
+                    placeholder="\uD83D\uDD0D \u0627\u0628\u062D\u062B \u0628\u0627\u0644\u062D\u0633\u0627\u0628..."
                     required
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}
                   />
                   {line.suggestions.length > 0 && !line.accountId && (
                     <ul
@@ -232,54 +249,58 @@ export default function JournalEntryForm() {
                         top: "100%",
                         left: 0,
                         right: 0,
-                        background: "white",
-                        border: "1px solid #ccc",
-                        maxHeight: "150px",
+                        background: "#fff",
+                        border: "1px solid #e2e8f0",
+                        maxHeight: "180px",
                         overflowY: "auto",
                         listStyle: "none",
                         margin: 0,
                         padding: 0,
                         zIndex: 10,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
                       }}
                     >
                       {line.suggestions.map((acc) => (
                         <li
                           key={acc.id}
                           onClick={() => handleSelectAccount(index, acc)}
-                          style={{ padding: "4px", cursor: "pointer" }}
+                          style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}
                         >
-                          {acc.code} - {acc.name}
+                          {acc.code} - {acc.name_ar || acc.name} - {acc.name}
                         </li>
                       ))}
                     </ul>
                   )}
                 </td>
-                <td>
+                <td style={cellStyle}>
                   <input
                     type="text"
                     value={line.description}
                     onChange={(e) => handleLineChange(index, "description", e.target.value)}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}
                   />
                 </td>
-                <td>
+                <td style={cellStyle}>
                   <input
                     type="number"
                     value={line.debit}
                     onChange={(e) => handleLineChange(index, "debit", e.target.value)}
                     step="0.01"
                     min="0"
+                    style={numberInputStyle}
                   />
                 </td>
-                <td>
+                <td style={cellStyle}>
                   <input
                     type="number"
                     value={line.credit}
                     onChange={(e) => handleLineChange(index, "credit", e.target.value)}
                     step="0.01"
                     min="0"
+                    style={numberInputStyle}
                   />
                 </td>
-                <td>
+                <td style={cellStyle}>
                   {lines.length > 1 && (
                     <button type="button" onClick={() => removeLine(index)}>
                       Remove
@@ -296,7 +317,7 @@ export default function JournalEntryForm() {
           </button>
         </div>
         <div style={{ marginBottom: "10px" }}>
-          <strong>Total Debit:</strong> {totalDebit.toFixed(2)} &nbsp; &nbsp;
+          <strong>Total Debit:</strong> {totalDebit.toFixed(2)} &nbsp;&nbsp;
           <strong>Total Credit:</strong> {totalCredit.toFixed(2)}
         </div>
         <div>
