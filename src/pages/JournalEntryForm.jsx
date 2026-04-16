@@ -1,21 +1,37 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  createJournalEntry,
-  searchAccounts,
-} from "../api.js";
+import { createJournalEntry, searchAccounts } from "../api.js";
 
+/**
+ * Form for creating a new journal entry. This component provides
+ * search‑as‑you‑type account selection with suggestions, enforces that each
+ * line contains either a debit or credit (but not both), and ensures
+ * the overall entry balances before it can be saved.
+ */
 export default function JournalEntryForm() {
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
+  // Default date to today (YYYY-MM-DD)
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  // Each line stores its own local state for account search and amounts
   const [lines, setLines] = useState([
-    { id: Date.now(), accountId: null, accountQuery: "", accountDisplay: "", description: "", debit: "", credit: "", suggestions: [] },
+    {
+      id: Date.now(),
+      legal_entity_id: 1,
+      branch_id: 1,
+      accountId: null,
+      accountQuery: "",
+      accountDisplay: "",
+      description: "",
+      debit: "",
+      credit: "",
+      suggestions: [],
+    },
   ]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Debounce search to avoid excessive requests
+  // Debounce account search for each line to avoid spamming the server
   useEffect(() => {
     const timers = [];
     lines.forEach((line, idx) => {
@@ -38,19 +54,19 @@ export default function JournalEntryForm() {
     return () => timers.forEach((t) => clearTimeout(t));
   }, [lines]);
 
+  // Calculate totals for debit and credit
   const totalDebit = lines.reduce((sum, line) => sum + parseFloat(line.debit || 0), 0);
   const totalCredit = lines.reduce((sum, line) => sum + parseFloat(line.credit || 0), 0);
 
+  // Update a line's field; also enforce that only one of debit/credit is set
   const handleLineChange = (index, field, value) => {
     setLines((prev) => {
       const copy = [...prev];
       copy[index][field] = value;
-      // Reset selection if user changes query
       if (field === "accountQuery") {
         copy[index].accountId = null;
         copy[index].accountDisplay = "";
       }
-      // Ensure only debit or credit value
       if (field === "debit" && value) {
         copy[index].credit = "";
       }
@@ -61,11 +77,14 @@ export default function JournalEntryForm() {
     });
   };
 
+  // Add a new empty line
   const addLine = () => {
     setLines((prev) => [
       ...prev,
       {
         id: Date.now() + Math.random(),
+        legal_entity_id: 1,
+        branch_id: 1,
         accountId: null,
         accountQuery: "",
         accountDisplay: "",
@@ -77,10 +96,12 @@ export default function JournalEntryForm() {
     ]);
   };
 
+  // Remove a line by index
   const removeLine = (index) => {
     setLines((prev) => prev.filter((_, idx) => idx !== index));
   };
 
+  // Handle selecting an account from suggestions
   const handleSelectAccount = (index, account) => {
     setLines((prev) => {
       const copy = [...prev];
@@ -92,36 +113,49 @@ export default function JournalEntryForm() {
     });
   };
 
+  // Submit the entry to the backend
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    // Validate lines: every line must have account and amount
+    // Validate each line: account selected and either debit or credit provided
     for (const line of lines) {
       if (!line.accountId) {
-        setError("Please select an account for each line.");
+        setError("Please select an account for all lines");
         return;
       }
       const debitVal = parseFloat(line.debit || 0);
       const creditVal = parseFloat(line.credit || 0);
       if ((debitVal === 0 && creditVal === 0) || (debitVal && creditVal)) {
-        setError("Each line must have either a debit or credit amount (not both).");
+        setError("Each line must have either a debit or credit amount (not both)");
         return;
       }
     }
     if (totalDebit !== totalCredit) {
-      setError("Total debit must equal total credit.");
+      setError("Journal entry must be balanced before saving");
       return;
     }
-    // Prepare payload for API. Some backends expect `date`, others expect `entry_date`.
     const payload = {
       description: description || null,
-      date,
       entry_date: date,
+      date,
+      voucher_type_id: 1,
+      fiscal_year_id: 1,
       lines: lines.map((line) => ({
+        legal_entity_id: line.legal_entity_id,
+        branch_id: line.branch_id,
         account_id: line.accountId,
-        description: line.description || null,
-        debit: parseFloat(line.debit || 0),
-        credit: parseFloat(line.credit || 0),
+        subledger_type: "NONE",
+        subledger_reference: null,
+        cost_center_id: null,
+        department_id: null,
+        project_id: null,
+        geographic_region_id: null,
+        business_line_id: null,
+        reserve_dimension_9_id: null,
+        reserve_dimension_10_id: null,
+        line_description: line.description || null,
+        debit_amount: parseFloat(line.debit || 0),
+        credit_amount: parseFloat(line.credit || 0),
       })),
     };
     setSaving(true);
@@ -135,6 +169,9 @@ export default function JournalEntryForm() {
     }
   };
 
+  // Determine if any line lacks an account selection
+  const hasEmptyAccount = lines.some((line) => !line.accountId);
+
   return (
     <div>
       <h2>Create Journal Entry</h2>
@@ -142,7 +179,13 @@ export default function JournalEntryForm() {
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: "10px" }}>
           <label>
-            Date: <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            Date:{" "}
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
           </label>
         </div>
         <div style={{ marginBottom: "10px" }}>
@@ -156,7 +199,12 @@ export default function JournalEntryForm() {
             />
           </label>
         </div>
-        <table border="1" cellPadding="6" cellSpacing="0" style={{ width: "100%", marginBottom: "10px" }}>
+        <table
+          border="1"
+          cellPadding="6"
+          cellSpacing="0"
+          style={{ width: "100%", marginBottom: "10px" }}
+        >
           <thead>
             <tr>
               <th>Account</th>
@@ -177,7 +225,6 @@ export default function JournalEntryForm() {
                     placeholder="Search account"
                     required
                   />
-                  {/* Suggestions dropdown */}
                   {line.suggestions.length > 0 && !line.accountId && (
                     <ul
                       style={{
@@ -253,7 +300,10 @@ export default function JournalEntryForm() {
           <strong>Total Credit:</strong> {totalCredit.toFixed(2)}
         </div>
         <div>
-          <button type="submit" disabled={saving}>
+          <button
+            type="submit"
+            disabled={saving || hasEmptyAccount || totalDebit !== totalCredit}
+          >
             {saving ? "Saving..." : "Create Entry"}
           </button>
         </div>
