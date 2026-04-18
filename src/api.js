@@ -1,12 +1,10 @@
 // API helper functions for interacting with the FastAPI backend.
 
-// Pull the base URL from the Vite environment. During development this should
-// point to something like "http://localhost:8000/api/v1", while in
-// production it will be provided via an environment variable. The prefix
-// "/accounting" is appended for all accounting‑related endpoints, but it is not
-// baked into the base URL so that the deployment base path in Vite remains
-// dynamic.
-const BASE_URL = import.meta.env.VITE_API_URL || "";
+// For stability across environments, we hard‑code the base URL instead of relying on
+// environment variables. This ensures that API calls always target the correct
+// backend instance. If you need to change the backend endpoint, update the
+// string below. The `/accounting` prefix is appended in each function.
+const BASE_URL = "https://web-production-54c61.up.railway.app/api/v1";
 
 async function handleResponse(resp) {
   if (!resp.ok) {
